@@ -24,6 +24,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/hook/notification", post(handle_notification))
         .route("/hook/stop", post(handle_stop))
         .route("/health", get(handle_health))
+        .route("/shutdown", post(handle_shutdown))
         .with_state(state)
 }
 
@@ -279,4 +280,13 @@ async fn handle_stop(
             StatusCode::BAD_GATEWAY
         }
     }
+}
+
+async fn handle_shutdown(State(state): State<Arc<AppState>>) -> Json<Value> {
+    info!("Shutdown requested via HTTP");
+    let mut tx = state.shutdown_tx.lock().await;
+    if let Some(sender) = tx.take() {
+        let _ = sender.send(());
+    }
+    Json(json!({"status": "shutting down"}))
 }

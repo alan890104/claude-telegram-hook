@@ -30,6 +30,10 @@ enum Commands {
     Setup,
     /// Install as system service and configure Claude Code settings
     Install,
+    /// Stop the running daemon
+    Stop,
+    /// Uninstall the system service
+    Uninstall,
 }
 
 #[derive(Clone, clap::ValueEnum)]
@@ -68,6 +72,43 @@ fn main() {
                 eprintln!("Install error: {}", e);
                 std::process::exit(1);
             }
+        }
+        Commands::Stop => run_stop(),
+        Commands::Uninstall => {
+            if let Err(e) = install::uninstall() {
+                eprintln!("Uninstall error: {}", e);
+                std::process::exit(1);
+            }
+        }
+    }
+}
+
+fn run_stop() {
+    let config = match config::Config::load() {
+        Some(c) => c,
+        None => {
+            eprintln!("Error: Config not found. Is the bridge set up?");
+            std::process::exit(1);
+        }
+    };
+
+    let url = format!("http://127.0.0.1:{}/shutdown", config.daemon_port);
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+        .unwrap();
+
+    match client.post(&url).send() {
+        Ok(resp) if resp.status().is_success() => {
+            println!("Daemon is shutting down.");
+        }
+        Ok(_) => {
+            eprintln!("Error: Daemon returned an unexpected response.");
+            std::process::exit(1);
+        }
+        Err(_) => {
+            eprintln!("Error: Could not connect to daemon (is it running?)");
+            std::process::exit(1);
         }
     }
 }

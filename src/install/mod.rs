@@ -193,3 +193,97 @@ fn merge_claude_settings(binary_path: &PathBuf) -> Result<()> {
 
     Ok(())
 }
+
+/// Uninstall the system service and remove hooks from Claude Code settings.
+pub fn uninstall() -> Result<()> {
+    println!("=== Claude Telegram Bridge Uninstall ===\n");
+
+    let platform = std::env::consts::OS;
+    match platform {
+        "macos" => uninstall_launchd()?,
+        "linux" => uninstall_systemd()?,
+        _ => {
+            println!("Warning: Unsupported platform: {}", platform);
+        }
+    }
+
+    remove_claude_settings()?;
+
+    println!("\n{}", "=".repeat(40));
+    println!("Uninstall complete.");
+    println!("Config file kept at: {}", crate::config::Config::config_path().display());
+    println!("To remove it: rm {}", crate::config::Config::config_path().display());
+
+    Ok(())
+}
+
+fn uninstall_launchd() -> Result<()> {
+    let home = dirs::home_dir().context("Cannot determine home directory")?;
+    let plist_path = home.join("Library/LaunchAgents/com.claude-telegram-bridge.plist");
+
+    if plist_path.exists() {
+        let _ = std::process::Command::new("launchctl")
+            .args(["unload", &plist_path.to_string_lossy()])
+            .output();
+        std::fs::remove_file(&plist_path)?;
+        println!("LaunchAgent removed: {}", plist_path.display());
+    } else {
+        println!("LaunchAgent not found (already removed)");
+    }
+
+    Ok(())
+}
+
+fn uninstall_systemd() -> Result<()> {
+    let home = dirs::home_dir().context("Cannot determine home directory")?;
+    let unit_path = home.join(".config/systemd/user/claude-telegram-bridge.service");
+
+    if unit_path.exists() {
+        let _ = std::process::Command::new("systemctl")
+            .args(["--user", "disable", "--now", "claude-telegram-bridge"])
+            .output();
+        std::fs::remove_file(&unit_path)?;
+        let _ = std::process::Command::new("systemctl")
+            .args(["--user", "daemon-reload"])
+            .output();
+        println!("systemd service removed: {}", unit_path.display());
+    } else {
+        println!("systemd service not found (already removed)");
+    }
+
+    Ok(())
+}
+
+fn remove_claude_settings() -> Result<()> {
+    let home = dirs::home_dir().context("Cannot determine home directory")?;
+    let settings_path = home.join(".claude/settings.json");
+
+    if !settings_path.exists() {
+        println!("Claude Code settings.json not found (nothing to clean)");
+        return Ok(());
+    }
+
+    let content = std::fs::read_to_string(&settings_path)
+        .with_context(|| format!("Failed to read {}", settings_path.display()))?;
+    let mut settings: serde_json::Value =
+        serde_json::from_str(&content).unwrap_or(serde_json::json!({}));
+
+    if let Some(hooks) = settings.get_mut("hooks").and_then(|h| h.as_object_mut()) {
+        hooks.remove("PermissionRequest");
+        hooks.remove("Notification");
+        hooks.remove("Stop");
+
+        // Remove empty hooks object
+        if hooks.is_empty() {
+            settings.as_object_mut().unwrap().remove("hooks");
+        }
+    }
+
+    let content = serde_json::to_string_pretty(&settings)?;
+    std::fs::write(&settings_path, content)
+        .with_context(|| format!("Failed to write {}", settings_path.display()))?;
+
+    println!("Claude Code hooks removed from settings.json");
+
+    Ok(())
+}

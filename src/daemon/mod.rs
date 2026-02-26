@@ -17,12 +17,15 @@ use tracing::{error, info};
 pub async fn run(
     config: Config,
     tray_tx: std::sync::mpsc::Sender<TrayUpdate>,
-    shutdown_rx: tokio::sync::oneshot::Receiver<()>,
+    tray_shutdown_rx: tokio::sync::oneshot::Receiver<()>,
 ) -> anyhow::Result<()> {
     let bot = Bot::new(&config.bot_token);
     let port = config.daemon_port;
 
-    let state = AppState::new(config.clone(), bot, tray_tx);
+    // Create a second shutdown channel for the HTTP /shutdown endpoint
+    let (http_shutdown_tx, http_shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+
+    let state = AppState::new(config.clone(), bot, tray_tx, http_shutdown_tx);
 
     // Start axum HTTP server
     let app = server::router(state.clone());
@@ -48,9 +51,15 @@ pub async fn run(
         timeout_reaper(reaper_state).await;
     });
 
-    // Wait for shutdown signal
-    let _ = shutdown_rx.await;
-    info!("Shutdown signal received");
+    // Wait for shutdown signal from either tray menu or HTTP endpoint
+    tokio::select! {
+        _ = tray_shutdown_rx => {
+            info!("Shutdown signal received from tray menu");
+        }
+        _ = http_shutdown_rx => {
+            info!("Shutdown signal received from HTTP endpoint");
+        }
+    }
 
     // Abort background tasks
     server_handle.abort();

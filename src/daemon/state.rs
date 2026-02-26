@@ -3,7 +3,7 @@ use crate::types::Decision;
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::{oneshot, RwLock};
+use tokio::sync::{oneshot, RwLock, Mutex};
 
 /// Message sent to the tray thread to update UI.
 #[derive(Debug, Clone)]
@@ -28,6 +28,8 @@ pub struct AppState {
     pub pending: RwLock<HashMap<String, PendingRequest>>,
     pub bot: teloxide::Bot,
     pub tray_tx: std::sync::mpsc::Sender<TrayUpdate>,
+    /// Oneshot sender to trigger graceful shutdown from HTTP endpoint.
+    pub shutdown_tx: Mutex<Option<oneshot::Sender<()>>>,
 }
 
 impl AppState {
@@ -35,12 +37,14 @@ impl AppState {
         config: Config,
         bot: teloxide::Bot,
         tray_tx: std::sync::mpsc::Sender<TrayUpdate>,
+        shutdown_tx: oneshot::Sender<()>,
     ) -> Arc<Self> {
         Arc::new(Self {
             config,
             pending: RwLock::new(HashMap::new()),
             bot,
             tray_tx,
+            shutdown_tx: Mutex::new(Some(shutdown_tx)),
         })
     }
 
