@@ -28,6 +28,205 @@ pub fn router(state: Arc<AppState>) -> Router {
         .with_state(state)
 }
 
+/// Extract a short session label from the payload (last component of cwd).
+fn session_label(payload: &Value) -> String {
+    let cwd = payload
+        .get("cwd")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    if cwd.is_empty() {
+        return String::new();
+    }
+    let dir_name = std::path::Path::new(cwd)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(cwd);
+    format!("📂 <code>{}</code>\n", encode_text(dir_name))
+}
+
+/// Truncate a string to max_len, appending "..." if truncated.
+fn truncate(s: &str, max_len: usize) -> String {
+    if s.len() > max_len {
+        format!("{}...", &s[..max_len])
+    } else {
+        s.to_string()
+    }
+}
+
+/// Format the permission message based on tool type.
+fn format_permission_message(payload: &Value) -> String {
+    let tool_name = payload
+        .get("tool_name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("Unknown");
+    let tool_input = payload.get("tool_input").cloned().unwrap_or(json!({}));
+    let session = session_label(payload);
+
+    let mut lines = vec![
+        "🔐 <b>Permission Required</b>".to_string(),
+        String::new(),
+        format!("{}Tool: <b>{}</b>", session, encode_text(tool_name)),
+    ];
+
+    match tool_name {
+        "Bash" => {
+            let cmd = tool_input
+                .get("command")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let desc = tool_input
+                .get("description")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            if !desc.is_empty() {
+                lines.push(format!("{}", encode_text(&truncate(desc, 200))));
+            }
+            lines.push(format!(
+                "\n<pre>{}</pre>",
+                encode_text(&truncate(cmd, 800))
+            ));
+        }
+        "Edit" | "Write" | "MultiEdit" => {
+            let file_path = tool_input
+                .get("file_path")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            lines.push(format!("File: <code>{}</code>", encode_text(file_path)));
+
+            if let Some(old) = tool_input.get("old_string").and_then(|v| v.as_str()) {
+                if !old.is_empty() {
+                    lines.push(format!(
+                        "\n<pre>{}</pre>",
+                        encode_text(&truncate(old, 300))
+                    ));
+                    lines.push("↓".to_string());
+                }
+            }
+            if let Some(new) = tool_input.get("new_string").and_then(|v| v.as_str()) {
+                if !new.is_empty() {
+                    lines.push(format!(
+                        "<pre>{}</pre>",
+                        encode_text(&truncate(new, 300))
+                    ));
+                }
+            }
+        }
+        "Task" => {
+            let desc = tool_input
+                .get("description")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let prompt = tool_input
+                .get("prompt")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            if !desc.is_empty() {
+                lines.push(format!("{}", encode_text(&truncate(desc, 300))));
+            }
+            if !prompt.is_empty() {
+                lines.push(format!(
+                    "\n<pre>{}</pre>",
+                    encode_text(&truncate(prompt, 500))
+                ));
+            }
+        }
+        "AskUserQuestion" => {
+            lines.clear();
+            lines.push("❓ <b>Claude has a question</b>".to_string());
+            lines.push(String::new());
+            lines.push(session.clone());
+
+            if let Some(questions) = tool_input.get("questions").and_then(|v| v.as_array()) {
+                for (qi, q) in questions.iter().enumerate() {
+                    let question_text = q
+                        .get("question")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("(no question text)");
+                    if questions.len() > 1 {
+                        lines.push(format!(
+                            "<b>Q{}: {}</b>",
+                            qi + 1,
+                            encode_text(question_text)
+                        ));
+                    } else {
+                        lines.push(format!("<b>{}</b>", encode_text(question_text)));
+                    }
+
+                    if let Some(options) = q.get("options").and_then(|v| v.as_array()) {
+                        for (oi, opt) in options.iter().enumerate() {
+                            let label = opt
+                                .get("label")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("?");
+                            let desc = opt
+                                .get("description")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("");
+                            if !desc.is_empty() {
+                                lines.push(format!(
+                                    "  {}. <b>{}</b> — {}",
+                                    oi + 1,
+                                    encode_text(label),
+                                    encode_text(&truncate(desc, 150))
+                                ));
+                            } else {
+                                lines.push(format!(
+                                    "  {}. <b>{}</b>",
+                                    oi + 1,
+                                    encode_text(label)
+                                ));
+                            }
+                        }
+                    }
+                    lines.push(String::new());
+                }
+            }
+            lines.push("💡 <i>Respond in the terminal</i>".to_string());
+        }
+        "Read" | "Glob" | "Grep" => {
+            // Typically auto-approved, but if not:
+            if let Some(path) = tool_input.get("file_path").and_then(|v| v.as_str()) {
+                lines.push(format!("Path: <code>{}</code>", encode_text(path)));
+            }
+            if let Some(pattern) = tool_input.get("pattern").and_then(|v| v.as_str()) {
+                lines.push(format!("Pattern: <code>{}</code>", encode_text(pattern)));
+            }
+        }
+        "WebFetch" | "WebSearch" => {
+            if let Some(url) = tool_input.get("url").and_then(|v| v.as_str()) {
+                lines.push(format!("URL: {}", encode_text(&truncate(url, 200))));
+            }
+            if let Some(query) = tool_input.get("query").and_then(|v| v.as_str()) {
+                lines.push(format!("Query: {}", encode_text(&truncate(query, 200))));
+            }
+        }
+        _ => {
+            // Generic fallback — show key-value pairs instead of raw JSON
+            if let Some(obj) = tool_input.as_object() {
+                for (key, val) in obj.iter().take(5) {
+                    let val_str = match val {
+                        Value::String(s) => truncate(s, 200),
+                        _ => truncate(&val.to_string(), 200),
+                    };
+                    lines.push(format!(
+                        "{}: <code>{}</code>",
+                        encode_text(key),
+                        encode_text(&val_str)
+                    ));
+                }
+            } else {
+                let detail = serde_json::to_string(&tool_input).unwrap_or_default();
+                lines.push(format!(
+                    "Input: <code>{}</code>",
+                    encode_text(&truncate(&detail, 300))
+                ));
+            }
+        }
+    }
+
+    lines.join("\n")
+}
+
 async fn handle_health(State(state): State<Arc<AppState>>) -> Json<Value> {
     let pending = state.pending.read().await.len();
     Json(json!({
@@ -40,62 +239,7 @@ async fn handle_permission(
     State(state): State<Arc<AppState>>,
     Json(req): Json<HookRequest>,
 ) -> Result<Json<HookResponse>, StatusCode> {
-    let payload = &req.payload;
-    let tool_name = payload
-        .get("tool_name")
-        .and_then(|v| v.as_str())
-        .unwrap_or("Unknown");
-    let tool_input = payload.get("tool_input").cloned().unwrap_or(json!({}));
-
-    // Build HTML-formatted message
-    let mut lines = vec![
-        "🔐 <b>Permission Required</b>".to_string(),
-        String::new(),
-        format!("Tool: <b>{}</b>", encode_text(tool_name)),
-    ];
-
-    match tool_name {
-        "Bash" => {
-            let cmd = tool_input
-                .get("command")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            let cmd = if cmd.len() > 500 { &cmd[..500] } else { cmd };
-            lines.push(format!("Command: <code>{}</code>", encode_text(cmd)));
-            if tool_input
-                .get("command")
-                .and_then(|v| v.as_str())
-                .map_or(false, |c| c.len() > 500)
-            {
-                lines.push("...(truncated)".to_string());
-            }
-        }
-        "Edit" | "Write" | "MultiEdit" => {
-            let file_path = tool_input
-                .get("file_path")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            lines.push(format!("File: <code>{}</code>", encode_text(file_path)));
-        }
-        "Task" => {
-            let desc = tool_input
-                .get("description")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            lines.push(format!("Description: {}", encode_text(desc)));
-        }
-        _ => {
-            let detail = serde_json::to_string(&tool_input).unwrap_or_default();
-            let detail = if detail.len() > 300 {
-                format!("{}...", &detail[..300])
-            } else {
-                detail
-            };
-            lines.push(format!("Input: <code>{}</code>", encode_text(&detail)));
-        }
-    }
-
-    let text = lines.join("\n");
+    let text = format_permission_message(&req.payload);
 
     // Build inline keyboard
     let keyboard = InlineKeyboardMarkup::new(vec![vec![
@@ -183,6 +327,7 @@ async fn handle_notification(
     Json(req): Json<HookRequest>,
 ) -> StatusCode {
     let payload = &req.payload;
+    let session = session_label(payload);
 
     let ntype = payload
         .get("notification_type")
@@ -206,14 +351,13 @@ async fn handle_notification(
     };
 
     let safe_title = encode_text(title);
-    let msg_text = if message.len() > 1000 {
-        &message[..1000]
-    } else {
-        message
-    };
-    let safe_message = encode_text(msg_text);
+    let msg_truncated = truncate(message, 1000);
+    let safe_message = encode_text(&msg_truncated);
 
-    let mut text = format!("{} <b>{}</b>\n\n{}", emoji, safe_title, safe_message);
+    let mut text = format!(
+        "{} <b>{}</b>\n\n{}{}",
+        emoji, safe_title, session, safe_message
+    );
 
     if ntype == "elicitation_dialog" {
         text.push_str("\n\n💡 <i>Please respond in the terminal</i>");
@@ -243,6 +387,7 @@ async fn handle_stop(
     Json(req): Json<HookRequest>,
 ) -> StatusCode {
     let payload = &req.payload;
+    let session = session_label(payload);
 
     let last_msg = payload
         .get("last_assistant_message")
@@ -250,17 +395,13 @@ async fn handle_stop(
         .unwrap_or("");
 
     let text = if !last_msg.is_empty() {
-        let truncated = if last_msg.len() > 500 {
-            format!("{}...", &last_msg[..500])
-        } else {
-            last_msg.to_string()
-        };
         format!(
-            "✅ <b>Claude Code task complete</b>\n\n{}",
-            encode_text(&truncated)
+            "✅ <b>Task complete</b>\n\n{}{}",
+            session,
+            encode_text(&truncate(last_msg, 500))
         )
     } else {
-        "✅ <b>Claude Code task complete</b>".to_string()
+        format!("✅ <b>Task complete</b>\n\n{}", session)
     };
 
     let chat_id = match state.config.chat_id.parse::<i64>() {
