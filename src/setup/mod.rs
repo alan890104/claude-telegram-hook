@@ -97,7 +97,6 @@ pub fn run() -> Result<()> {
         permission_timeout: timeout,
         disabled: false,
         daemon_port: 19876,
-        stop_notify_after: 120,
     };
     config.save()?;
     println!("Config saved to {}", Config::config_path().display());

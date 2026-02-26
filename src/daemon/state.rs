@@ -30,8 +30,9 @@ pub struct AppState {
     pub tray_tx: std::sync::mpsc::Sender<TrayUpdate>,
     /// Oneshot sender to trigger graceful shutdown from HTTP endpoint.
     pub shutdown_tx: Mutex<Option<oneshot::Sender<()>>>,
-    /// Tracks when each session_id was first seen, for filtering short sessions.
-    pub sessions: RwLock<HashMap<String, DateTime<Utc>>>,
+    /// Tracks permission request count per session since last stop,
+    /// used to decide whether a "task complete" notification is worth sending.
+    pub session_permission_count: RwLock<HashMap<String, u32>>,
 }
 
 impl AppState {
@@ -47,29 +48,20 @@ impl AppState {
             bot,
             tray_tx,
             shutdown_tx: Mutex::new(Some(shutdown_tx)),
-            sessions: RwLock::new(HashMap::new()),
+            session_permission_count: RwLock::new(HashMap::new()),
         })
     }
 
-    /// Record a session's first contact time. Returns the first-seen timestamp.
-    pub async fn touch_session(&self, session_id: &str) -> DateTime<Utc> {
-        let mut sessions = self.sessions.write().await;
-        *sessions.entry(session_id.to_string()).or_insert_with(Utc::now)
+    /// Increment the permission request count for a session.
+    pub async fn record_permission(&self, session_id: &str) {
+        let mut map = self.session_permission_count.write().await;
+        *map.entry(session_id.to_string()).or_insert(0) += 1;
     }
 
-    /// Get how long a session has been active (in seconds). Returns 0 if unknown.
-    pub async fn session_age_secs(&self, session_id: &str) -> u64 {
-        let sessions = self.sessions.read().await;
-        match sessions.get(session_id) {
-            Some(first_seen) => (Utc::now() - *first_seen).num_seconds().max(0) as u64,
-            None => 0,
-        }
-    }
-
-    /// Remove a session from tracking.
-    pub async fn remove_session(&self, session_id: &str) {
-        let mut sessions = self.sessions.write().await;
-        sessions.remove(session_id);
+    /// Take (and reset) the permission count for a session. Returns 0 if none.
+    pub async fn take_permission_count(&self, session_id: &str) -> u32 {
+        let mut map = self.session_permission_count.write().await;
+        map.remove(session_id).unwrap_or(0)
     }
 
     /// Notify the tray of current pending count.
