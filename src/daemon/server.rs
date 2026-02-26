@@ -239,6 +239,11 @@ async fn handle_permission(
     State(state): State<Arc<AppState>>,
     Json(req): Json<HookRequest>,
 ) -> Result<Json<HookResponse>, StatusCode> {
+    // Track session activity
+    if let Some(sid) = req.payload.get("session_id").and_then(|v| v.as_str()) {
+        state.touch_session(sid).await;
+    }
+
     let text = format_permission_message(&req.payload);
 
     // Build inline keyboard
@@ -327,6 +332,12 @@ async fn handle_notification(
     Json(req): Json<HookRequest>,
 ) -> StatusCode {
     let payload = &req.payload;
+
+    // Track session activity
+    if let Some(sid) = payload.get("session_id").and_then(|v| v.as_str()) {
+        state.touch_session(sid).await;
+    }
+
     let session = session_label(payload);
 
     let ntype = payload
@@ -392,6 +403,27 @@ async fn handle_stop(
     Json(req): Json<HookRequest>,
 ) -> StatusCode {
     let payload = &req.payload;
+    let session_id = payload
+        .get("session_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+
+    // Check session age — skip notification for short-lived sessions
+    let threshold = state.config.stop_notify_after;
+    if threshold > 0 && !session_id.is_empty() {
+        let age = state.session_age_secs(session_id).await;
+        state.remove_session(session_id).await;
+        if age < threshold {
+            info!(
+                session_id,
+                age,
+                threshold,
+                "Skipping stop notification (session too short)"
+            );
+            return StatusCode::OK;
+        }
+    }
+
     let session = session_label(payload);
 
     let last_msg = payload

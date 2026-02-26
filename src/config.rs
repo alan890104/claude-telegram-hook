@@ -14,6 +14,10 @@ pub struct Config {
     pub disabled: bool,
     #[serde(default = "default_port")]
     pub daemon_port: u16,
+    /// Only send "task complete" notification if the session has been
+    /// active for at least this many seconds. Set to 0 to always notify.
+    #[serde(default = "default_stop_notify_after")]
+    pub stop_notify_after: u64,
 }
 
 fn default_timeout() -> u64 {
@@ -22,6 +26,10 @@ fn default_timeout() -> u64 {
 
 fn default_port() -> u16 {
     19876
+}
+
+fn default_stop_notify_after() -> u64 {
+    120
 }
 
 impl Config {
@@ -83,6 +91,7 @@ impl Default for Config {
             permission_timeout: default_timeout(),
             disabled: false,
             daemon_port: default_port(),
+            stop_notify_after: default_stop_notify_after(),
         }
     }
 }
