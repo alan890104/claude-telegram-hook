@@ -1,9 +1,12 @@
 use crate::daemon::state::AppState;
 use crate::types::Decision;
 use std::sync::Arc;
+use std::time::Duration;
 use teloxide::dispatching::UpdateFilterExt;
+use teloxide::error_handlers::LoggingErrorHandler;
 use teloxide::prelude::*;
-use teloxide::types::{CallbackQuery, ChatId, MessageId, ParseMode};
+use teloxide::types::{AllowedUpdate, CallbackQuery, ChatId, MessageId};
+use teloxide::update_listeners::Polling;
 use tracing::{info, warn};
 
 /// Start the teloxide dispatcher for handling callback queries.
@@ -20,10 +23,19 @@ pub async fn start_polling(state: Arc<AppState>) {
         },
     );
 
+    // Only poll for callback queries, drop stale updates from before daemon start
+    let polling = Polling::builder(bot.clone())
+        .allowed_updates(vec![AllowedUpdate::CallbackQuery])
+        .timeout(Duration::from_secs(30))
+        .drop_pending_updates()
+        .build();
+
     Dispatcher::builder(bot, handler)
-        .enable_ctrlc_handler()
         .build()
-        .dispatch()
+        .dispatch_with_listener(
+            polling,
+            LoggingErrorHandler::with_custom_text("Telegram polling error"),
+        )
         .await;
 }
 
@@ -69,7 +81,7 @@ async fn handle_callback(bot: Bot, query: CallbackQuery, state: Arc<AppState>) {
 
     match pending {
         Some(req) => {
-            // Answer the callback query
+            // Answer the callback query (stops the loading spinner in Telegram)
             let answer_text = if decision == Decision::Allow {
                 "Allowed"
             } else {
@@ -80,26 +92,20 @@ async fn handle_callback(bot: Bot, query: CallbackQuery, state: Arc<AppState>) {
                 .text(answer_text)
                 .await;
 
-            // Edit original message with result badge
-            let badge = if decision == Decision::Allow {
-                "\n\n✅ <b>Allowed</b>"
-            } else {
-                "\n\n❌ <b>Denied</b>"
-            };
-            let new_text = format!("{}{}", req.original_text, badge);
-
-            let chat = ChatId(state.config.chat_id.parse::<i64>().unwrap_or(0));
-            let _ = bot
-                .edit_message_text(chat, MessageId(req.telegram_msg_id), new_text)
-                .parse_mode(ParseMode::Html)
-                .await;
-
-            // Send decision to the waiting HTTP handler
+            // Send decision to the waiting HTTP handler IMMEDIATELY
+            // (don't block Claude Code on the delete_message API call)
             let _ = req.sender.send(decision);
             info!(request_id, ?decision, "Permission resolved");
 
             // Update tray
             state.notify_tray_pending().await;
+
+            // Delete the permission message in the background
+            let chat = ChatId(state.config.chat_id.parse::<i64>().unwrap_or(0));
+            let msg_id = req.telegram_msg_id;
+            tokio::spawn(async move {
+                let _ = bot.delete_message(chat, MessageId(msg_id)).await;
+            });
         }
         None => {
             // Stale or expired button

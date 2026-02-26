@@ -4,26 +4,52 @@ use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, TrayIconBuilder};
 use tracing::{error, info};
 
-const ICON_SIZE: u32 = 32;
+/// Icon size (22px is standard for macOS menu bar; 44px for retina).
+const ICON_SIZE: u32 = 44;
 
-/// Create a simple colored icon programmatically.
-fn create_icon(r: u8, g: u8, b: u8) -> Icon {
-    let mut rgba = Vec::with_capacity((ICON_SIZE * ICON_SIZE * 4) as usize);
-    for y in 0..ICON_SIZE {
-        for x in 0..ICON_SIZE {
-            // Simple circle
-            let cx = ICON_SIZE as f32 / 2.0;
-            let cy = ICON_SIZE as f32 / 2.0;
-            let dist = ((x as f32 - cx).powi(2) + (y as f32 - cy).powi(2)).sqrt();
-            let radius = ICON_SIZE as f32 / 2.0 - 1.0;
-            if dist <= radius {
-                rgba.extend_from_slice(&[r, g, b, 255]);
-            } else {
-                rgba.extend_from_slice(&[0, 0, 0, 0]);
+/// Create a monochrome icon with a letter/symbol.
+/// Uses black on transparent so macOS template rendering works
+/// (system handles light/dark mode automatically).
+fn create_icon(pending: bool) -> Icon {
+    let size = ICON_SIZE;
+    let mut rgba = vec![0u8; (size * size * 4) as usize];
+
+    // Draw a "C" shape (for Claude) as a thick arc
+    let cx = size as f32 / 2.0;
+    let cy = size as f32 / 2.0;
+    let outer_r = size as f32 / 2.0 - 2.0;
+    let inner_r = outer_r - 6.0;
+
+    for y in 0..size {
+        for x in 0..size {
+            let dx = x as f32 - cx;
+            let dy = y as f32 - cy;
+            let dist = (dx * dx + dy * dy).sqrt();
+            let idx = ((y * size + x) * 4) as usize;
+
+            // Draw the "C" arc (exclude the right side opening)
+            if dist >= inner_r && dist <= outer_r {
+                let angle = dy.atan2(dx);
+                // Opening on the right side: skip angles between -45° and +45°
+                if angle.abs() > std::f32::consts::FRAC_PI_4 {
+                    rgba[idx] = 0;     // R
+                    rgba[idx + 1] = 0; // G
+                    rgba[idx + 2] = 0; // B
+                    rgba[idx + 3] = 255; // A
+                }
+            }
+
+            // If pending, draw a small filled dot in the center
+            if pending && dist <= 4.0 {
+                rgba[idx] = 0;
+                rgba[idx + 1] = 0;
+                rgba[idx + 2] = 0;
+                rgba[idx + 3] = 255;
             }
         }
     }
-    Icon::from_rgba(rgba, ICON_SIZE, ICON_SIZE).expect("Failed to create icon")
+
+    Icon::from_rgba(rgba, size, size).expect("Failed to create icon")
 }
 
 /// Run the tray icon event loop on the main thread.
@@ -33,9 +59,8 @@ pub fn run_tray_loop(
     update_rx: mpsc::Receiver<TrayUpdate>,
     shutdown_tx: tokio::sync::oneshot::Sender<()>,
 ) {
-    let normal_icon = create_icon(100, 200, 100); // green
-    let pending_icon = create_icon(255, 165, 0); // orange
-    let _error_icon = create_icon(255, 80, 80); // red
+    let normal_icon = create_icon(false);
+    let pending_icon = create_icon(true);
 
     // Build menu
     let status_item = MenuItem::new("Claude Telegram Bridge — Running", false, None);
@@ -55,6 +80,7 @@ pub fn run_tray_loop(
         .with_menu(Box::new(menu))
         .with_tooltip("Claude Telegram Bridge")
         .with_icon(normal_icon.clone())
+        .with_icon_as_template(true)
         .build()
         .expect("Failed to build tray icon");
 
@@ -73,9 +99,9 @@ pub fn run_tray_loop(
                     let label = format!("{} pending request{}", n, if n == 1 { "" } else { "s" });
                     let _ = pending_item.set_text(&label);
                     if n > 0 {
-                        let _ = tray.set_icon(Some(pending_icon.clone()));
+                        let _ = tray.set_icon_with_as_template(Some(pending_icon.clone()), true);
                     } else {
-                        let _ = tray.set_icon(Some(normal_icon.clone()));
+                        let _ = tray.set_icon_with_as_template(Some(normal_icon.clone()), true);
                     }
                 }
                 TrayUpdate::Error(msg) => {
