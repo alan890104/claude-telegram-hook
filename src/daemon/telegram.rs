@@ -71,9 +71,9 @@ async fn handle_callback(bot: Bot, query: CallbackQuery, state: Arc<AppState>) {
         Some(req) => {
             // Answer the callback query
             let answer_text = if decision == Decision::Allow {
-                "已允許"
+                "Allowed"
             } else {
-                "已拒絕"
+                "Denied"
             };
             let _ = bot
                 .answer_callback_query(&query.id)
@@ -82,9 +82,9 @@ async fn handle_callback(bot: Bot, query: CallbackQuery, state: Arc<AppState>) {
 
             // Edit original message with result badge
             let badge = if decision == Decision::Allow {
-                "\n\n✅ <b>已允許</b>"
+                "\n\n✅ <b>Allowed</b>"
             } else {
-                "\n\n❌ <b>已拒絕</b>"
+                "\n\n❌ <b>Denied</b>"
             };
             let new_text = format!("{}{}", req.original_text, badge);
 
@@ -105,7 +105,7 @@ async fn handle_callback(bot: Bot, query: CallbackQuery, state: Arc<AppState>) {
             // Stale or expired button
             let _ = bot
                 .answer_callback_query(&query.id)
-                .text("此按鈕已過期")
+                .text("This button has expired")
                 .await;
         }
     }

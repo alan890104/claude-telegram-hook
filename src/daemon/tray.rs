@@ -39,10 +39,10 @@ pub fn run_tray_loop(
 
     // Build menu
     let status_item = MenuItem::new("Claude Telegram Bridge — Running", false, None);
-    let pending_item = MenuItem::new("0 個待處理請求", false, None);
+    let pending_item = MenuItem::new("0 pending requests", false, None);
     let separator = PredefinedMenuItem::separator();
-    let open_config = MenuItem::new("開啟設定檔…", true, None);
-    let quit_item = MenuItem::new("結束", true, None);
+    let open_config = MenuItem::new("Open config...", true, None);
+    let quit_item = MenuItem::new("Quit", true, None);
 
     let menu = Menu::new();
     let _ = menu.append(&status_item);
@@ -70,7 +70,7 @@ pub fn run_tray_loop(
         while let Ok(update) = update_rx.try_recv() {
             match update {
                 TrayUpdate::PendingCount(n) => {
-                    let label = format!("{} 個待處理請求", n);
+                    let label = format!("{} pending request{}", n, if n == 1 { "" } else { "s" });
                     let _ = pending_item.set_text(&label);
                     if n > 0 {
                         let _ = tray.set_icon(Some(pending_icon.clone()));

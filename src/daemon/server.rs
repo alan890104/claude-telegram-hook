@@ -48,9 +48,9 @@ async fn handle_permission(
 
     // Build HTML-formatted message
     let mut lines = vec![
-        "🔐 <b>Claude Code 需要權限</b>".to_string(),
+        "🔐 <b>Permission Required</b>".to_string(),
         String::new(),
-        format!("工具: <b>{}</b>", encode_text(tool_name)),
+        format!("Tool: <b>{}</b>", encode_text(tool_name)),
     ];
 
     match tool_name {
@@ -60,13 +60,13 @@ async fn handle_permission(
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
             let cmd = if cmd.len() > 500 { &cmd[..500] } else { cmd };
-            lines.push(format!("命令: <code>{}</code>", encode_text(cmd)));
+            lines.push(format!("Command: <code>{}</code>", encode_text(cmd)));
             if tool_input
                 .get("command")
                 .and_then(|v| v.as_str())
                 .map_or(false, |c| c.len() > 500)
             {
-                lines.push("...（已截斷）".to_string());
+                lines.push("...(truncated)".to_string());
             }
         }
         "Edit" | "Write" | "MultiEdit" => {
@@ -74,14 +74,14 @@ async fn handle_permission(
                 .get("file_path")
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
-            lines.push(format!("檔案: <code>{}</code>", encode_text(file_path)));
+            lines.push(format!("File: <code>{}</code>", encode_text(file_path)));
         }
         "Task" => {
             let desc = tool_input
                 .get("description")
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
-            lines.push(format!("描述: {}", encode_text(desc)));
+            lines.push(format!("Description: {}", encode_text(desc)));
         }
         _ => {
             let detail = serde_json::to_string(&tool_input).unwrap_or_default();
@@ -90,7 +90,7 @@ async fn handle_permission(
             } else {
                 detail
             };
-            lines.push(format!("輸入: <code>{}</code>", encode_text(&detail)));
+            lines.push(format!("Input: <code>{}</code>", encode_text(&detail)));
         }
     }
 
@@ -98,8 +98,8 @@ async fn handle_permission(
 
     // Build inline keyboard
     let keyboard = InlineKeyboardMarkup::new(vec![vec![
-        InlineKeyboardButton::callback("✅ 允許", format!("allow:{}", req.request_id)),
-        InlineKeyboardButton::callback("❌ 拒絕", format!("deny:{}", req.request_id)),
+        InlineKeyboardButton::callback("Allow", format!("allow:{}", req.request_id)),
+        InlineKeyboardButton::callback("Deny", format!("deny:{}", req.request_id)),
     ]]);
 
     let chat_id = ChatId(
@@ -160,7 +160,7 @@ async fn handle_permission(
                 pending.remove(&req.request_id)
             };
             if let Some(req_data) = removed {
-                let new_text = format!("{}\n\n⏰ <b>已逾時，請在終端機操作</b>", req_data.original_text);
+                let new_text = format!("{}\n\n⏰ <b>Timed out — respond in terminal</b>", req_data.original_text);
                 let _ = state.bot
                     .edit_message_text(chat_id, MessageId(req_data.telegram_msg_id), new_text)
                     .parse_mode(ParseMode::Html)
@@ -215,7 +215,7 @@ async fn handle_notification(
     let mut text = format!("{} <b>{}</b>\n\n{}", emoji, safe_title, safe_message);
 
     if ntype == "elicitation_dialog" {
-        text.push_str("\n\n💡 <i>請回到終端機回應</i>");
+        text.push_str("\n\n💡 <i>Please respond in the terminal</i>");
     }
 
     let chat_id = match state.config.chat_id.parse::<i64>() {
@@ -255,11 +255,11 @@ async fn handle_stop(
             last_msg.to_string()
         };
         format!(
-            "✅ <b>Claude Code 已完成任務</b>\n\n{}",
+            "✅ <b>Claude Code task complete</b>\n\n{}",
             encode_text(&truncated)
         )
     } else {
-        "✅ <b>Claude Code 已完成任務</b>".to_string()
+        "✅ <b>Claude Code task complete</b>".to_string()
     };
 
     let chat_id = match state.config.chat_id.parse::<i64>() {

@@ -6,7 +6,7 @@ pub fn run() -> Result<()> {
     let binary_path = std::env::current_exe()
         .context("Failed to determine current executable path")?;
 
-    println!("=== Claude Telegram Bridge 服務安裝 ===\n");
+    println!("=== Claude Telegram Bridge Service Install ===\n");
 
     // Detect platform
     let platform = std::env::consts::OS;
@@ -14,8 +14,8 @@ pub fn run() -> Result<()> {
         "macos" => install_launchd(&binary_path)?,
         "linux" => install_systemd(&binary_path)?,
         _ => {
-            println!("❌ 不支援的平台: {}", platform);
-            println!("請手動啟動: {} daemon", binary_path.display());
+            println!("Error: Unsupported platform: {}", platform);
+            println!("Please start manually: {} daemon", binary_path.display());
             return Ok(());
         }
     }
@@ -24,9 +24,9 @@ pub fn run() -> Result<()> {
     merge_claude_settings(&binary_path)?;
 
     println!("\n{}", "=".repeat(40));
-    println!("🎉 安裝完成！");
+    println!("Install complete!");
     println!();
-    println!("背景服務已啟動，Claude Code hooks 已設定。");
+    println!("Background service started and Claude Code hooks configured.");
 
     Ok(())
 }
@@ -70,7 +70,7 @@ fn install_launchd(binary_path: &PathBuf) -> Result<()> {
     std::fs::write(&plist_path, &plist_content)
         .with_context(|| format!("Failed to write {}", plist_path.display()))?;
 
-    println!("✅ LaunchAgent plist 已寫入: {}", plist_path.display());
+    println!("LaunchAgent plist written: {}", plist_path.display());
 
     // Unload existing (ignore errors if not loaded)
     let _ = std::process::Command::new("launchctl")
@@ -84,10 +84,10 @@ fn install_launchd(binary_path: &PathBuf) -> Result<()> {
         .context("Failed to run launchctl load")?;
 
     if output.status.success() {
-        println!("✅ LaunchAgent 已載入並啟動");
+        println!("LaunchAgent loaded and started");
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        println!("⚠️  launchctl load 回報: {}", stderr.trim());
+        println!("Warning: launchctl load reported: {}", stderr.trim());
     }
 
     Ok(())
@@ -119,7 +119,7 @@ WantedBy=default.target
     std::fs::write(&unit_path, &unit_content)
         .with_context(|| format!("Failed to write {}", unit_path.display()))?;
 
-    println!("✅ systemd unit 已寫入: {}", unit_path.display());
+    println!("systemd unit written: {}", unit_path.display());
 
     // Enable and start
     let output = std::process::Command::new("systemctl")
@@ -128,10 +128,10 @@ WantedBy=default.target
         .context("Failed to run systemctl")?;
 
     if output.status.success() {
-        println!("✅ systemd service 已啟用並啟動");
+        println!("systemd service enabled and started");
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        println!("⚠️  systemctl 回報: {}", stderr.trim());
+        println!("Warning: systemctl reported: {}", stderr.trim());
     }
 
     Ok(())
@@ -189,7 +189,7 @@ fn merge_claude_settings(binary_path: &PathBuf) -> Result<()> {
     std::fs::write(&settings_path, content)
         .with_context(|| format!("Failed to write {}", settings_path.display()))?;
 
-    println!("✅ Claude Code settings.json 已更新: {}", settings_path.display());
+    println!("Claude Code settings.json updated: {}", settings_path.display());
 
     Ok(())
 }

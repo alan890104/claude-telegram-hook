@@ -82,7 +82,7 @@ pub fn run(hook_type: HookType) {
                             "hookEventName": "PermissionRequest",
                             "decision": {
                                 "behavior": "deny",
-                                "message": "使用者透過 Telegram 拒絕了此操作",
+                                "message": "User denied this action via Telegram",
                             },
                         }
                     });

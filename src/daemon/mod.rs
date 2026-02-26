@@ -95,7 +95,7 @@ async fn timeout_reaper(state: Arc<AppState>) {
                     state.config.chat_id.parse::<i64>().unwrap_or(0),
                 );
                 let new_text = format!(
-                    "{}\n\n⏰ <b>已逾時，請在終端機操作</b>",
+                    "{}\n\n⏰ <b>Timed out — respond in terminal</b>",
                     req.original_text
                 );
                 let _ = state

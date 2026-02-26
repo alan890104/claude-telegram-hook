@@ -84,14 +84,14 @@ fn run_daemon() {
     let config = match config::Config::load() {
         Some(c) => c,
         None => {
-            eprintln!("❌ 設定檔未找到或缺少 bot_token/chat_id。");
-            eprintln!("請先執行: claude-telegram-bridge setup");
+            eprintln!("Error: Config not found or missing bot_token/chat_id.");
+            eprintln!("Run first: claude-telegram-bridge setup");
             std::process::exit(1);
         }
     };
 
     if config.disabled {
-        eprintln!("⚠️  Telegram bridge 已停用 (disabled=true)");
+        eprintln!("Warning: Telegram bridge is disabled (disabled=true)");
         std::process::exit(0);
     }
 
