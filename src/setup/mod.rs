@@ -121,6 +121,15 @@ pub fn run() -> Result<()> {
 
     // Step 6: Test buttons
     println!("\nTesting button functionality...");
+    // Flush pending updates so we only see new callback_query
+    let _ = client
+        .get(&format!(
+            "https://api.telegram.org/bot{}/getUpdates",
+            token
+        ))
+        .query(&[("offset", "-1"), ("timeout", "0")])
+        .send();
+
     let resp: serde_json::Value = client
         .post(&url)
         .json(&serde_json::json!({
@@ -137,7 +146,62 @@ pub fn run() -> Result<()> {
         .json()?;
 
     if resp.get("ok").and_then(|v| v.as_bool()) == Some(true) {
-        println!("Button test message sent!");
+        println!("Button test sent — press a button in Telegram...");
+
+        // Poll for callback_query (up to 30 seconds)
+        let updates_url = format!("https://api.telegram.org/bot{}/getUpdates", token);
+        let mut confirmed = false;
+        let start = std::time::Instant::now();
+
+        while start.elapsed() < std::time::Duration::from_secs(30) {
+            if let Ok(resp) = client
+                .get(&updates_url)
+                .query(&[("timeout", "5"), ("allowed_updates", "[\"callback_query\"]")])
+                .send()
+            {
+                if let Ok(data) = resp.json::<serde_json::Value>() {
+                    if let Some(updates) = data["result"].as_array() {
+                        for update in updates {
+                            let cb_data = update["callback_query"]["data"].as_str().unwrap_or("");
+                            if cb_data == "test_allow" || cb_data == "test_deny" {
+                                // Answer the callback so the spinner stops
+                                let cb_id = update["callback_query"]["id"].as_str().unwrap_or("");
+                                let _ = client
+                                    .post(&format!(
+                                        "https://api.telegram.org/bot{}/answerCallbackQuery",
+                                        token
+                                    ))
+                                    .json(&serde_json::json!({
+                                        "callback_query_id": cb_id,
+                                        "text": "Button works!"
+                                    }))
+                                    .send();
+
+                                // Confirm the update so it doesn't repeat
+                                let update_id = update["update_id"].as_i64().unwrap_or(0);
+                                let _ = client
+                                    .get(&updates_url)
+                                    .query(&[("offset", (update_id + 1).to_string()), ("timeout", "0".to_string())])
+                                    .send();
+
+                                let which = if cb_data == "test_allow" { "Allow" } else { "Deny" };
+                                println!("  Received \"{}\" — buttons work!", which);
+                                confirmed = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            if confirmed {
+                break;
+            }
+        }
+
+        if !confirmed {
+            println!("  No button press received (timed out after 30s)");
+            println!("  Buttons may still work — you can test later with the daemon");
+        }
     } else {
         println!("Error: Button test failed");
     }
