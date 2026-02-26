@@ -1,0 +1,29 @@
+[package]
+name = "claude-telegram-bridge"
+version = "0.1.0"
+edition = "2021"
+description = "Approve Claude Code from your phone — Telegram bridge for permission management, notifications, and task alerts"
+license = "MIT"
+repository = "https://github.com/alan890104/claude-telegram-hook"
+keywords = ["claude-code", "telegram", "hooks", "remote-control", "cli"]
+categories = ["command-line-utilities", "development-tools"]
+readme = "README.md"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+tokio = { version = "1", features = ["full"] }
+axum = "0.8"
+reqwest = { version = "0.12", features = ["json", "blocking"] }
+teloxide = { version = "0.13", features = ["macros"] }
+tray-icon = "0.19"
+image = "0.25"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4"] }
+chrono = "0.4"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+dirs = "6"
+html-escape = "0.2"
+anyhow = "1"
+open = "5"
