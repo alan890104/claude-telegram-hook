@@ -1,1 +1,5 @@
 /target
+*.env
+telegram_config.json
+*.pem
+*.key

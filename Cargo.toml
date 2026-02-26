@@ -13,8 +13,8 @@ readme = "README.md"
 clap = { version = "4", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }
 axum = "0.8"
-reqwest = { version = "0.12", features = ["json", "blocking"] }
-teloxide = { version = "0.13", features = ["macros"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "blocking", "rustls-tls"] }
+teloxide = { version = "0.13", default-features = false, features = ["macros", "rustls", "ctrlc_handler"] }
 tray-icon = "0.19"
 image = "0.25"
 serde = { version = "1", features = ["derive"] }
