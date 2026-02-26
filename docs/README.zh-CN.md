@@ -67,20 +67,16 @@ claude-telegram-bridge install
 
 ## 工作原理
 
-```
-你 (Telegram)             Daemon                    Claude Code
-     │                      │                          │
-     │                ┌─────┴──────┐                   │
-     │                │ HTTP Server │◄── hook client ──┤ 需要权限
-     │                │ :19876      │    POST 请求      │
-     │                └─────┬──────┘                   │
-     │                      │                          │
-     │◄── 发送消息 ─────────┤                          │
-     │   [允许] [拒绝]       │                          │
-     │                      │                          │
-     ├── 按下允许 ──────────►│                          │
-     │                      ├── 返回决定 ──────────────►│ 继续执行
-     │                      │                          │
+```mermaid
+sequenceDiagram
+    participant U as 你 (Telegram)
+    participant D as Daemon (:19876)
+    participant C as Claude Code
+
+    C->>D: POST /hook/permission
+    D->>U: 消息附带 [允许] [拒绝]
+    U->>D: 按下允许
+    D->>C: 返回决定 → 继续执行
 ```
 
 单一 daemon 进程独占 Telegram 连接。每个 Claude Code session 通过 localhost HTTP 与 daemon 通信。按钮按下后通过唯一 request ID 路由到正确的 session。

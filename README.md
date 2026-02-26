@@ -67,20 +67,16 @@ Done. Open Claude Code and it just works.
 
 ## How It Works
 
-```
-You (Telegram)          Daemon                    Claude Code
-     │                    │                          │
-     │              ┌─────┴──────┐                   │
-     │              │ HTTP Server │◄── hook thin ────┤ needs permission
-     │              │ :19876      │    client POST    │
-     │              └─────┬──────┘                   │
-     │                    │                          │
-     │◄── sends message ──┤                          │
-     │   [Allow] [Deny]   │                          │
-     │                    │                          │
-     ├── taps Allow ─────►│                          │
-     │                    ├── returns decision ─────►│ proceeds
-     │                    │                          │
+```mermaid
+sequenceDiagram
+    participant U as You (Telegram)
+    participant D as Daemon (:19876)
+    participant C as Claude Code
+
+    C->>D: POST /hook/permission
+    D->>U: Message with [Allow] [Deny]
+    U->>D: Tap Allow
+    D->>C: Return decision → proceeds
 ```
 
 A single daemon process owns the Telegram connection. Each Claude Code session talks to the daemon over localhost HTTP. Button presses are routed to the correct session via unique request IDs.

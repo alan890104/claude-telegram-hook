@@ -67,20 +67,16 @@ claude-telegram-bridge install
 
 ## 작동 방식
 
-```
-당신 (Telegram)           Daemon                    Claude Code
-     │                      │                          │
-     │                ┌─────┴──────┐                   │
-     │                │ HTTP Server │◄── hook client ──┤ 권한 필요
-     │                │ :19876      │    POST 요청      │
-     │                └─────┬──────┘                   │
-     │                      │                          │
-     │◄── 메시지 전송 ──────┤                          │
-     │   [허용] [거부]       │                          │
-     │                      │                          │
-     ├── 허용 탭 ───────────►│                          │
-     │                      ├── 결정 반환 ─────────────►│ 처리 계속
-     │                      │                          │
+```mermaid
+sequenceDiagram
+    participant U as 당신 (Telegram)
+    participant D as Daemon (:19876)
+    participant C as Claude Code
+
+    C->>D: POST /hook/permission
+    D->>U: 메시지 [허용] [거부]
+    U->>D: 허용 탭
+    D->>C: 결정 반환 → 처리 계속
 ```
 
 단일 데몬 프로세스가 Telegram 연결을 독점합니다. 각 Claude Code 세션은 localhost HTTP로 데몬과 통신합니다. 버튼 클릭은 고유한 요청 ID로 올바른 세션에 라우팅됩니다.
