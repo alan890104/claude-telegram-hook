@@ -333,6 +333,12 @@ async fn handle_notification(
         .get("notification_type")
         .and_then(|v| v.as_str())
         .unwrap_or("");
+
+    // Skip noisy notifications that aren't actionable from Telegram
+    if ntype == "idle_prompt" {
+        return StatusCode::OK;
+    }
+
     let message = payload
         .get("message")
         .and_then(|v| v.as_str())
@@ -345,7 +351,6 @@ async fn handle_notification(
     let emoji = match ntype {
         "permission_prompt" => "🔔",
         "elicitation_dialog" => "❓",
-        "idle_prompt" => "💤",
         "auth_success" => "🔑",
         _ => "📢",
     };
